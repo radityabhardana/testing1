@@ -6,25 +6,29 @@ require_once __DIR__ . '/includes/crud.php';
 
 cek_login();
 
-$total_barang = hitung_total_barang($koneksi);
-$total_stok = hitung_total_stok($koneksi);
-$total_nilai = hitung_total_nilai($koneksi);
+// Ambil semua data barang real-time dari database
+$daftar_barang = ambil_semua_barang($koneksi);
 
-$semua_barang = ambil_semua_barang($koneksi);
-
-// Hitung barang dengan stok menipis (<= 5)
+// Hitung metrik dinamis
+$total_barang = count($daftar_barang);
+$total_stok = 0;
+$total_nilai = 0;
 $stok_menipis_count = 0;
 $stok_habis_count = 0;
-foreach ($semua_barang as $item) {
-    if ($item['stok'] <= 0) {
+
+foreach ($daftar_barang as $item) {
+    $stok = (int)$item['stok'];
+    $harga = (float)$item['harga'];
+    
+    $total_stok += $stok;
+    $total_nilai += ($harga * $stok);
+
+    if ($stok <= 0) {
         $stok_habis_count++;
-    } elseif ($item['stok'] <= 5) {
+    } elseif ($stok <= 5) {
         $stok_menipis_count++;
     }
 }
-
-// 6 barang terbaru
-$barang_terbaru = array_slice($semua_barang, 0, 6);
 
 $page_title = 'Dashboard';
 require_once __DIR__ . '/includes/header.php';
@@ -48,7 +52,7 @@ require_once __DIR__ . '/includes/header.php';
     </div>
 </div>
 
-<!-- KPI Cards Grid -->
+<!-- 4 KPI Cards: 100% Berkorelasi dengan Data Tabel di Bawah -->
 <div class="row g-3 mb-4">
     <div class="col-sm-6 col-xl-3">
         <div class="kpi-metric-card h-100">
@@ -57,7 +61,7 @@ require_once __DIR__ . '/includes/header.php';
                 <i class="bi bi-box-seam text-muted"></i>
             </div>
             <div class="kpi-number"><?= number_format($total_barang, 0, ',', '.') ?></div>
-            <div class="kpi-desc">Item SKU terdaftar</div>
+            <div class="kpi-desc">Total jenis / baris barang</div>
         </div>
     </div>
     <div class="col-sm-6 col-xl-3">
@@ -67,7 +71,7 @@ require_once __DIR__ . '/includes/header.php';
                 <i class="bi bi-boxes text-muted"></i>
             </div>
             <div class="kpi-number"><?= number_format($total_stok, 0, ',', '.') ?></div>
-            <div class="kpi-desc">Unit fisik barang</div>
+            <div class="kpi-desc">Akumulasi jumlah unit stok</div>
         </div>
     </div>
     <div class="col-sm-6 col-xl-3">
@@ -77,7 +81,7 @@ require_once __DIR__ . '/includes/header.php';
                 <i class="bi bi-wallet2 text-muted"></i>
             </div>
             <div class="kpi-number" style="font-size: 1.3rem;"><?= format_rupiah($total_nilai) ?></div>
-            <div class="kpi-desc">Akumulasi nilai inventaris</div>
+            <div class="kpi-desc">Akumulasi nilai seluruh aset</div>
         </div>
     </div>
     <div class="col-sm-6 col-xl-3">
@@ -87,16 +91,19 @@ require_once __DIR__ . '/includes/header.php';
                 <i class="bi bi-exclamation-circle text-muted"></i>
             </div>
             <div class="kpi-number"><?= $stok_menipis_count + $stok_habis_count ?></div>
-            <div class="kpi-desc"><?= $stok_habis_count ?> habis &bull; <?= $stok_menipis_count ?> menipis</div>
+            <div class="kpi-desc"><?= $stok_habis_count ?> habis &bull; <?= $stok_menipis_count ?> menipis (&le; 5)</div>
         </div>
     </div>
 </div>
 
-<!-- Recent Assets Table -->
+<!-- Tabel Lengkap Inventaris -->
 <div class="card">
     <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
-        <div class="fw-semibold">Barang Terbaru Ditambahkan</div>
-        <a href="barang.php" class="small text-muted text-decoration-none">Lihat semua &rarr;</a>
+        <div class="fw-semibold">
+            Daftar Seluruh Barang Inventaris
+            <span class="badge bg-light text-muted border ms-1 fw-normal"><?= $total_barang ?> item</span>
+        </div>
+        <a href="barang.php" class="small text-muted text-decoration-none">Kelola di Data Barang &rarr;</a>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
@@ -106,23 +113,25 @@ require_once __DIR__ . '/includes/header.php';
                         <th class="ps-3" style="width: 50px;">No</th>
                         <th style="width: 140px;">Kode SKU</th>
                         <th>Nama Barang</th>
-                        <th>Kategori</th>
-                        <th class="text-end">Harga Satuan</th>
-                        <th class="text-center" style="width: 90px;">Stok</th>
+                        <th style="width: 180px;">Kategori</th>
+                        <th class="text-end" style="width: 140px;">Harga Satuan</th>
+                        <th class="text-center" style="width: 80px;">Stok</th>
+                        <th class="text-end" style="width: 160px;">Total Nilai</th>
                         <th class="text-center" style="width: 120px;">Status</th>
                         <th class="text-center pe-3" style="width: 90px;">Aksi</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <?php if (empty($barang_terbaru)): ?>
+                    <?php if (empty($daftar_barang)): ?>
                         <tr>
-                            <td colspan="8" class="text-center py-4 text-muted">
-                                Belum ada data barang di sistem.
+                            <td colspan="9" class="text-center py-5 text-muted">
+                                Belum ada data barang di sistem. Silakan klik tombol <strong>Tambah Barang</strong>.
                             </td>
                         </tr>
                     <?php else: ?>
-                        <?php foreach ($barang_terbaru as $index => $item): 
+                        <?php foreach ($daftar_barang as $index => $item): 
                             $status_stok = get_status_stok((int)$item['stok']);
+                            $subtotal_item = (float)$item['harga'] * (int)$item['stok'];
                         ?>
                             <tr>
                                 <td class="ps-3 text-muted small"><?= $index + 1 ?></td>
@@ -141,6 +150,9 @@ require_once __DIR__ . '/includes/header.php';
                                 <td class="text-center fw-semibold" style="font-variant-numeric: tabular-nums;">
                                     <?= number_format($item['stok'], 0, ',', '.') ?>
                                 </td>
+                                <td class="text-end fw-semibold text-dark" style="font-variant-numeric: tabular-nums;">
+                                    <?= format_rupiah($subtotal_item) ?>
+                                </td>
                                 <td class="text-center">
                                     <span class="status-pill <?= $status_stok['class'] ?>">
                                         <?= $status_stok['label'] ?>
@@ -155,6 +167,25 @@ require_once __DIR__ . '/includes/header.php';
                         <?php endforeach; ?>
                     <?php endif; ?>
                 </tbody>
+                <?php if (!empty($daftar_barang)): ?>
+                    <tfoot>
+                        <tr class="bg-light fw-bold" style="border-top: 1px solid var(--theme-border);">
+                            <td colspan="5" class="ps-3 text-uppercase text-muted py-3">
+                                Total Akumulasi (Sesuai 4 Kartu di Atas)
+                            </td>
+                            <td class="text-center py-3 text-dark" style="font-variant-numeric: tabular-nums;">
+                                <?= number_format($total_stok, 0, ',', '.') ?>
+                            </td>
+                            <td class="text-end py-3 text-dark" style="font-variant-numeric: tabular-nums;">
+                                <?= format_rupiah($total_nilai) ?>
+                            </td>
+                            <td class="text-center py-3 small text-muted">
+                                <?= $stok_menipis_count + $stok_habis_count ?> item
+                            </td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
+                <?php endif; ?>
             </table>
         </div>
     </div>

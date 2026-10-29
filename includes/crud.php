@@ -62,6 +62,40 @@ function hapus_barang($koneksi, $id) {
     return $hasil;
 }
 
+// Menghasilkan kode barang/SKU otomatis berdasarkan nomor urut terakhir pada kategori
+function generate_kode_otomatis($koneksi, $kategori) {
+    $prefix_map = [
+        'IT & Komputer' => 'OFC-IT-',
+        'Furniture & Perabotan' => 'OFC-FURN-',
+        'Alat Tulis Kantor (ATK)' => 'OFC-ATK-',
+        'Elektronik & Presentasi' => 'OFC-ELK-',
+        'Perlengkapan Pantry & Fasilitas' => 'OFC-PNT-',
+        'Perlengkapan Ruangan' => 'OFC-PNT-',
+        'Lainnya' => 'OFC-GEN-'
+    ];
+
+    $prefix = $prefix_map[$kategori] ?? 'OFC-BRG-';
+
+    $stmt = mysqli_prepare($koneksi, "SELECT kode FROM barang WHERE kode LIKE ?");
+    $search = $prefix . '%';
+    mysqli_stmt_bind_param($stmt, "s", $search);
+    mysqli_stmt_execute($stmt);
+    $res = mysqli_stmt_get_result($stmt);
+
+    $max_num = 0;
+    while ($row = mysqli_fetch_assoc($res)) {
+        if (preg_match('/(\d+)$/', $row['kode'], $matches)) {
+            $num = (int)$matches[1];
+            if ($num > $max_num) {
+                $max_num = $num;
+            }
+        }
+    }
+    mysqli_stmt_close($stmt);
+
+    return $prefix . sprintf('%03d', $max_num + 1);
+}
+
 // Format badge kategori minimalis & seragam
 function get_kategori_badge_class($kategori) {
     return 'badge-category-neutral';

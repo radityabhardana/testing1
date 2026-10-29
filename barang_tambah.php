@@ -13,17 +13,37 @@ $kategori = '';
 $harga = '';
 $stok = '';
 
+$opsi_kategori = [
+    'IT & Komputer',
+    'Furniture & Perabotan',
+    'Alat Tulis Kantor (ATK)',
+    'Elektronik & Presentasi',
+    'Perlengkapan Pantry & Fasilitas',
+    'Lainnya'
+];
+
+// Siapkan pemetaan kode otomatis untuk tiap kategori
+$kode_otomatis_map = [];
+foreach ($opsi_kategori as $kat) {
+    $kode_otomatis_map[$kat] = generate_kode_otomatis($koneksi, $kat);
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $token = $_POST['csrf_token'] ?? '';
     if (!verifikasi_csrf($token)) {
         die('Invalid CSRF token.');
     }
 
+    $kategori = trim($_POST['kategori'] ?? '');
     $kode = strtoupper(trim($_POST['kode'] ?? ''));
     $nama = trim($_POST['nama'] ?? '');
-    $kategori = trim($_POST['kategori'] ?? '');
     $harga = trim($_POST['harga'] ?? '');
     $stok = trim($_POST['stok'] ?? '');
+
+    // Jika kode kosong tapi kategori terpilih, generate otomatis di server
+    if (empty($kode) && !empty($kategori)) {
+        $kode = generate_kode_otomatis($koneksi, $kategori);
+    }
 
     $input_data = [
         'kode' => $kode,
@@ -39,7 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $berhasil = tambah_barang($koneksi, $kode, $nama, $kategori, (float)$harga, (int)$stok);
 
         if ($berhasil) {
-            set_flash('success', 'Data barang [' . $kode . '] berhasil ditambahkan.');
+            set_flash('success', 'Barang baru [' . $kode . '] ' . $nama . ' berhasil ditambahkan.');
             header("Location: barang.php");
             exit;
         } else {
@@ -76,42 +96,52 @@ require_once __DIR__ . '/includes/header.php';
                     <?= csrf_field() ?>
 
                     <div class="row g-3 mb-3">
-                        <div class="col-md-5">
-                            <label for="kode" class="form-label">Kode Barang / SKU <span class="text-danger">*</span></label>
-                            <input type="text" class="form-control font-monospace <?= isset($errors['kode']) ? 'is-invalid' : '' ?>" id="kode" name="kode" value="<?= escape($kode) ?>" placeholder="Contoh: OFC-IT-001" style="text-transform: uppercase;" required autofocus>
-                            <?php if (isset($errors['kode'])): ?>
-                                <div class="invalid-feedback"><?= escape($errors['kode']) ?></div>
-                            <?php else: ?>
-                                <div class="form-text">Kode unik inventaris (maks. 20 karakter).</div>
-                            <?php endif; ?>
-                        </div>
-
-                        <div class="col-md-7">
-                            <label for="kategori" class="form-label">Kategori <span class="text-danger">*</span></label>
-                            <select class="form-select <?= isset($errors['kategori']) ? 'is-invalid' : '' ?>" id="kategori" name="kategori" required>
+                        <!-- Kategori ditaruh di awal agar kode otomatis bisa terisi -->
+                        <div class="col-md-6">
+                            <label for="kategori" class="form-label">Kategori Barang <span class="text-danger">*</span></label>
+                            <select class="form-select <?= isset($errors['kategori']) ? 'is-invalid' : '' ?>" id="kategori" name="kategori" required autofocus>
                                 <option value="">-- Pilih Kategori --</option>
-                                <?php
-                                $opsi_kategori = [
-                                    'IT & Komputer',
-                                    'Furniture & Perabotan',
-                                    'Alat Tulis Kantor (ATK)',
-                                    'Elektronik & Presentasi',
-                                    'Perlengkapan Ruangan',
-                                    'Lainnya'
-                                ];
-                                foreach ($opsi_kategori as $kat):
-                                ?>
-                                    <option value="<?= escape($kat) ?>" <?= ($kategori === $kat) ? 'selected' : '' ?>><?= escape($kat) ?></option>
+                                <?php foreach ($opsi_kategori as $kat): ?>
+                                    <option value="<?= escape($kat) ?>" 
+                                            data-kode="<?= escape($kode_otomatis_map[$kat]) ?>"
+                                            <?= ($kategori === $kat) ? 'selected' : '' ?>>
+                                        <?= escape($kat) ?> (Next: <?= escape($kode_otomatis_map[$kat]) ?>)
+                                    </option>
                                 <?php endforeach; ?>
                             </select>
                             <?php if (isset($errors['kategori'])): ?>
                                 <div class="invalid-feedback"><?= escape($errors['kategori']) ?></div>
+                            <?php else: ?>
+                                <div class="form-text">Pilih kategori untuk generate kode SKU otomatis.</div>
+                            <?php endif; ?>
+                        </div>
+
+                        <!-- Kode SKU otomatis terisi -->
+                        <div class="col-md-6">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <label for="kode" class="form-label mb-0">Kode Barang / SKU <span class="text-danger">*</span></label>
+                                <span class="badge bg-light text-success border small" id="badgeOtomatis" style="display: <?= !empty($kode) ? 'inline-block' : 'none' ?>;">
+                                    <i class="bi bi-magic me-1"></i>Otomatis
+                                </span>
+                            </div>
+                            <input type="text" 
+                                   class="form-control font-monospace <?= isset($errors['kode']) ? 'is-invalid' : '' ?>" 
+                                   id="kode" 
+                                   name="kode" 
+                                   value="<?= escape($kode) ?>" 
+                                   placeholder="Pilih kategori terlebih dahulu" 
+                                   style="text-transform: uppercase;" 
+                                   required>
+                            <?php if (isset($errors['kode'])): ?>
+                                <div class="invalid-feedback"><?= escape($errors['kode']) ?></div>
+                            <?php else: ?>
+                                <div class="form-text">Nomor urut otomatis sesuai kategori (bisa diedit jika perlu).</div>
                             <?php endif; ?>
                         </div>
 
                         <div class="col-12">
                             <label for="nama" class="form-label">Nama Barang <span class="text-danger">*</span></label>
-                            <input type="text" class="form-control <?= isset($errors['nama']) ? 'is-invalid' : '' ?>" id="nama" name="nama" value="<?= escape($nama) ?>" placeholder="Contoh: Laptop ThinkPad T14 / Meja Kerja 120x60" required>
+                            <input type="text" class="form-control <?= isset($errors['nama']) ? 'is-invalid' : '' ?>" id="nama" name="nama" value="<?= escape($nama) ?>" placeholder="Contoh: Laptop ThinkPad T14 / Kursi Kerja Ergonomis" required>
                             <?php if (isset($errors['nama'])): ?>
                                 <div class="invalid-feedback"><?= escape($errors['nama']) ?></div>
                             <?php endif; ?>
@@ -151,5 +181,41 @@ require_once __DIR__ . '/includes/header.php';
         </div>
     </div>
 </div>
+
+<script>
+    // Script Auto-Fill Kode Barang saat Kategori Dipilih
+    const kategoriSelect = document.getElementById('kategori');
+    const kodeInput = document.getElementById('kode');
+    const badgeOtomatis = document.getElementById('badgeOtomatis');
+
+    kategoriSelect.addEventListener('change', function() {
+        const selectedOption = this.options[this.selectedIndex];
+        const autoKode = selectedOption.getAttribute('data-kode');
+        
+        if (autoKode) {
+            kodeInput.value = autoKode;
+            if (badgeOtomatis) badgeOtomatis.style.display = 'inline-block';
+            
+            // Animasi halus highlight input
+            kodeInput.style.backgroundColor = '#f0fdf4';
+            setTimeout(() => {
+                kodeInput.style.backgroundColor = '';
+            }, 400);
+        } else {
+            kodeInput.value = '';
+            if (badgeOtomatis) badgeOtomatis.style.display = 'none';
+        }
+    });
+
+    // Jalankan saat pertama kali dibuka jika kategori sudah terpilih
+    if (kategoriSelect.value && !kodeInput.value) {
+        const selectedOption = kategoriSelect.options[kategoriSelect.selectedIndex];
+        const autoKode = selectedOption.getAttribute('data-kode');
+        if (autoKode) {
+            kodeInput.value = autoKode;
+            if (badgeOtomatis) badgeOtomatis.style.display = 'inline-block';
+        }
+    }
+</script>
 
 <?php require_once __DIR__ . '/includes/footer.php'; ?>
